@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Clock, Monitor, TrendingUp, Calendar, BarChart2 } from 'lucide-react';
+import { Clock, Monitor, TrendingUp, Calendar } from 'lucide-react';
 import { StatCard, UsageChart, LoadingSpinner, ErrorMessage } from '../components/Charts';
-import { useDailyUsage, useSummaryStats, useHourlyUsage, formatTime } from '../hooks/useApi';
+import { useDailyUsage, useSummaryStats, useTopApps, formatTime } from '../hooks/useApi';
 
 const Overview: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -9,16 +9,13 @@ const Overview: React.FC = () => {
   // API calls
   const { data: dailyData, loading: dailyLoading, error: dailyError } = useDailyUsage(selectedDate);
   const { data: summaryData, loading: summaryLoading, error: summaryError } = useSummaryStats(7);
-  const { data: hourlyData, loading: hourlyLoading, error: hourlyError } = useHourlyUsage(selectedDate);
+  const { data: topAppsData, loading: topAppsLoading, error: topAppsError } = useTopApps(5, 7);
 
   const formatDate = (date: Date) => {
     return date.toISOString().split('T')[0];
   };
 
-  const loading = dailyLoading || summaryLoading || hourlyLoading;
-  const error = dailyError || summaryError || hourlyError;
-
-  if (loading) {
+  if (dailyLoading || summaryLoading || topAppsLoading) {
     return (
       <div className="flex justify-center items-center h-64">
         <LoadingSpinner size="lg" />
@@ -26,10 +23,10 @@ const Overview: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (dailyError || summaryError || topAppsError) {
     return (
       <ErrorMessage 
-        message={error || 'An error occurred'} 
+        message={dailyError || summaryError || topAppsError || 'An error occurred'} 
       />
     );
   }
@@ -84,37 +81,6 @@ const Overview: React.FC = () => {
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Apps Today */}
-        <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Top Apps & Sites Today</h2>
-          {dailyData?.top_apps && dailyData.top_apps.length > 0 ? (
-            <div className="space-y-3">
-              {dailyData.top_apps.slice(0, 7).map((app, index) => {
-                const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500'];
-                return (
-                <div key={app.website_url || app.app_name} className="flex items-center justify-between">
-                  <div className="flex items-center truncate">
-                    <div className={`w-3 h-3 rounded-full mr-3 flex-shrink-0 ${colors[index % colors.length]}`} />
-                    <div className="truncate">
-                      <p className="font-medium text-gray-900 truncate" title={app.website_url || app.app_name}>{app.website_url || app.app_name}</p>
-                      <p className="text-sm text-gray-500">{app.category}</p>
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0 pl-2">
-                    <p className="font-medium text-gray-900">{formatTime(app.total_seconds)}</p>
-                    <p className="text-sm text-gray-500">{app.percentage.toFixed(1)}%</p>
-                  </div>
-                </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="flex justify-center items-center h-64 text-gray-500">
-              No app data for selected date
-            </div>
-          )}
-        </div>
-
         {/* Category Distribution */}
         <div className="card">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Time by Category</h2>
@@ -132,18 +98,49 @@ const Overview: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Top Apps */}
+        <div className="card">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Top Apps Today</h2>
+          {dailyData?.top_apps && dailyData.top_apps.length > 0 ? (
+            <div className="space-y-3">
+              {dailyData.top_apps.slice(0, 5).map((app, index) => {
+                const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-red-500', 'bg-purple-500'];
+                return (
+                <div key={app.website_url || app.app_name} className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className={`w-3 h-3 rounded-full mr-3 ${colors[index % colors.length]}`} />
+                    <div>
+                      <p className="font-medium text-gray-900">{app.website_url || app.app_name}</p>
+                      <p className="text-sm text-gray-500">{app.category}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-medium text-gray-900">{formatTime(app.total_seconds)}</p>
+                    <p className="text-sm text-gray-500">{app.percentage.toFixed(1)}%</p>
+                  </div>
+                </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex justify-center items-center h-64 text-gray-500">
+              No app data for selected date
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Hourly Breakdown */}
-      {hourlyData && hourlyData.hourly_data && (
+      {/* Weekly Top Apps */}
+      {topAppsData && topAppsData.apps && (
         <div className="card">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Hourly Breakdown</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Top Apps This Week</h2>
           <UsageChart
-            data={hourlyData.hourly_data}
+            data={topAppsData.apps}
             type="bar"
             height={300}
             dataKey="total_seconds"
-            nameKey="hour"
+            nameKey="app_name"
           />
         </div>
       )}

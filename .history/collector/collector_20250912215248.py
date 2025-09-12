@@ -28,7 +28,7 @@ class WindowInfo:
 class HyprlandCollector:
     """Collects window activity data from Hyprland compositor"""
     
-    def __init__(self, db_path: str = "data/wellbeing.db", interval: int = 5):
+    def __init__(self, db_path: str = "data/wellbeing.db", interval: int = 10):
         self.db_path = Path(db_path)
         self.interval = interval
         self.running = True

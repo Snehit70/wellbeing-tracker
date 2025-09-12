@@ -20,7 +20,7 @@ class ProcessorConfig:
     """Configuration for the data processor"""
     db_path: str
     categories_path: str
-    process_interval: int = 60  # 1 minute
+    process_interval: int = 300  # 5 minutes
     batch_size: int = 1000
 
 
@@ -204,18 +204,17 @@ class DataProcessor:
         try:
             conn = self._get_database_connection()
             cursor = conn.cursor()
-
-            # Find the latest processed date, then re-process the last 2 days for accuracy
+            
+            # Find the latest processed date
             cursor.execute("SELECT MAX(date) FROM daily_usage")
             result = cursor.fetchone()
             last_processed_date = result[0] if result[0] else '1970-01-01'
-            start_processing_date = (datetime.strptime(last_processed_date, "%Y-%m-%d").date() - timedelta(days=1)).isoformat()
-
-            self.logger.debug(f"Processing daily data since: {start_processing_date}")
-
-            # Get all hourly data to be re-processed
+            
+            self.logger.debug(f"Processing daily data since: {last_processed_date}")
+            
+            # Get unprocessed daily data from hourly aggregations
             cursor.execute("""
-                SELECT
+                SELECT 
                     date,
                     device_type,
                     app_name,
@@ -224,62 +223,60 @@ class DataProcessor:
                     SUM(total_seconds) as total_seconds,
                     SUM(event_count) as event_count
                 FROM hourly_usage
-                WHERE date >= ?
+                WHERE date > ?
                 GROUP BY date, device_type, app_name, website_url, category
                 ORDER BY date
-            """, (start_processing_date,))
-
+            """, (last_processed_date,))
+            
             daily_data = cursor.fetchall()
-
+            
             if not daily_data:
                 self.logger.debug("No new daily data to process")
                 conn.close()
                 return
-
-            # Delete old data for the dates we are about to update
-            dates_to_update = sorted(list(set(row[0] for row in daily_data)))
-            for event_date in dates_to_update:
-                cursor.execute("DELETE FROM daily_usage WHERE date = ?", (event_date,))
-                cursor.execute("DELETE FROM daily_category_usage WHERE date = ?", (event_date,))
-
-            # Insert new daily usage data
+                
+            # Process each daily group
             for row in daily_data:
                 event_date, device_type, app_name, website_url, category, total_seconds, event_count = row
+                
+                # Insert or update daily usage
                 cursor.execute("""
-                    INSERT INTO daily_usage
+                    INSERT OR REPLACE INTO daily_usage 
                     (date, device_type, app_name, website_url, category, total_seconds, event_count)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (event_date, device_type, app_name, website_url, category, total_seconds, event_count))
-
-            # Now, re-calculate daily category usage from the newly inserted daily_usage data
+                
+            # Process daily category aggregations
             cursor.execute("""
-                SELECT
+                SELECT 
                     date,
                     device_type,
                     category,
                     SUM(total_seconds) as total_seconds
                 FROM daily_usage
-                WHERE date >= ?
+                WHERE date > ?
                 GROUP BY date, device_type, category
-            """, (start_processing_date,))
+                ORDER BY date
+            """, (last_processed_date,))
             
             category_data = cursor.fetchall()
-
+            
             for row in category_data:
                 event_date, device_type, category, total_seconds = row
+                
                 cursor.execute("""
-                    INSERT INTO daily_category_usage
+                    INSERT OR REPLACE INTO daily_category_usage 
                     (date, device_type, category, total_seconds)
                     VALUES (?, ?, ?, ?)
                 """, (event_date, device_type, category, total_seconds))
-
+                
             conn.commit()
             conn.close()
-
-            self.logger.info(f"Processed {len(daily_data)} daily aggregations and {len(category_data)} category aggregations for {len(dates_to_update)} day(s).")
-
+            
+            self.logger.info(f"Processed {len(daily_data)} daily aggregations and {len(category_data)} category aggregations")
+            
         except Exception as e:
-            self.logger.error(f"Error processing daily aggregations: {e}", exc_info=True)
+            self.logger.error(f"Error processing daily aggregations: {e}")
             
     def _update_app_categories_table(self):
         """Update the app_categories table from the JSON mappings"""

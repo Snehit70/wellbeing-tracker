@@ -20,7 +20,7 @@ class ProcessorConfig:
     """Configuration for the data processor"""
     db_path: str
     categories_path: str
-    process_interval: int = 60  # 1 minute
+    process_interval: int = 300  # 5 minutes
     batch_size: int = 1000
 
 

@@ -20,7 +20,7 @@ class ProcessorConfig:
     """Configuration for the data processor"""
     db_path: str
     categories_path: str
-    process_interval: int = 60  # 1 minute
+    process_interval: int = 300  # 5 minutes
     batch_size: int = 1000
 
 
@@ -141,21 +141,23 @@ class DataProcessor:
         try:
             conn = self._get_database_connection()
             cursor = conn.cursor()
-
-            # Find the latest processed timestamp to minimize reprocessing
-            cursor.execute("SELECT MAX(date || ' ' || printf('%02d', hour) || ':59:59') FROM hourly_usage")
+            
+            # Find the latest processed timestamp
+            cursor.execute("""
+                SELECT MAX(date || ' ' || printf('%02d', hour) || ':00:00') as last_processed
+                FROM hourly_usage
+            """)
+            
             result = cursor.fetchone()
-            # Go back 2 hours to be safe and recapture any late-arriving events
-            last_processed_ts = result[0] if result[0] else '1970-01-01 00:00:00'
-            start_processing_ts = (datetime.fromisoformat(last_processed_ts) - timedelta(hours=2)).isoformat()
-
-            self.logger.debug(f"Processing hourly data since: {start_processing_ts}")
-
+            last_processed = result[0] if result[0] else '1970-01-01 00:00:00'
+            
+            self.logger.debug(f"Processing hourly data since: {last_processed}")
+            
             # Get unprocessed events
             cursor.execute("""
-                SELECT
-                    STRFTIME('%Y-%m-%d', timestamp) as event_date,
-                    CAST(STRFTIME('%H', timestamp) AS INTEGER) as event_hour,
+                SELECT 
+                    DATE(timestamp) as event_date,
+                    CAST(strftime('%H', timestamp) AS INTEGER) as event_hour,
                     device_type,
                     app_name,
                     website_url,
@@ -163,123 +165,116 @@ class DataProcessor:
                     SUM(duration_seconds) as total_seconds
                 FROM events
                 WHERE timestamp > ?
-                GROUP BY event_date, event_hour, device_type, app_name, website_url
+                GROUP BY DATE(timestamp), CAST(strftime('%H', timestamp) AS INTEGER), device_type, app_name, website_url
                 ORDER BY event_date, event_hour
-            """, (start_processing_ts,))
-
+            """, (last_processed,))
+            
             hourly_data = cursor.fetchall()
-
+            
             if not hourly_data:
                 self.logger.debug("No new hourly data to process")
                 conn.close()
                 return
-
-            # Delete old data for the hours we are about to update
-            hours_to_update = set((row[0], row[1]) for row in hourly_data)
-            for event_date, event_hour in hours_to_update:
-                cursor.execute("DELETE FROM hourly_usage WHERE date = ? AND hour = ?", (event_date, event_hour))
-
+                
             # Process each hourly group
             for row in hourly_data:
                 event_date, event_hour, device_type, app_name, website_url, event_count, total_seconds = row
                 
+                # Get category for this app
                 category = self.category_manager.get_category(app_name)
                 
+                # Insert or update hourly usage
                 cursor.execute("""
-                    INSERT INTO hourly_usage
+                    INSERT OR REPLACE INTO hourly_usage 
                     (date, hour, device_type, app_name, website_url, category, total_seconds, event_count)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (event_date, event_hour, device_type, app_name, website_url, category, total_seconds, event_count))
-
+                
             conn.commit()
             conn.close()
-
-            self.logger.info(f"Processed {len(hourly_data)} hourly aggregations for {len(hours_to_update)} hour-slots.")
-
+            
+            self.logger.info(f"Processed {len(hourly_data)} hourly aggregations")
+            
         except Exception as e:
-            self.logger.error(f"Error processing hourly aggregations: {e}", exc_info=True)
+            self.logger.error(f"Error processing hourly aggregations: {e}")
             
     def _process_daily_aggregations(self):
         """Process hourly data into daily aggregations"""
         try:
             conn = self._get_database_connection()
             cursor = conn.cursor()
-
-            # Find the latest processed date, then re-process the last 2 days for accuracy
+            
+            # Find the latest processed date
             cursor.execute("SELECT MAX(date) FROM daily_usage")
             result = cursor.fetchone()
             last_processed_date = result[0] if result[0] else '1970-01-01'
-            start_processing_date = (datetime.strptime(last_processed_date, "%Y-%m-%d").date() - timedelta(days=1)).isoformat()
-
-            self.logger.debug(f"Processing daily data since: {start_processing_date}")
-
-            # Get all hourly data to be re-processed
+            
+            self.logger.debug(f"Processing daily data since: {last_processed_date}")
+            
+            # Get unprocessed daily data from hourly aggregations
             cursor.execute("""
-                SELECT
+                SELECT 
                     date,
                     device_type,
                     app_name,
-                    website_url,
                     category,
                     SUM(total_seconds) as total_seconds,
                     SUM(event_count) as event_count
                 FROM hourly_usage
-                WHERE date >= ?
-                GROUP BY date, device_type, app_name, website_url, category
+                WHERE date > ?
+                GROUP BY date, device_type, app_name, category
                 ORDER BY date
-            """, (start_processing_date,))
-
+            """, (last_processed_date,))
+            
             daily_data = cursor.fetchall()
-
+            
             if not daily_data:
                 self.logger.debug("No new daily data to process")
                 conn.close()
                 return
-
-            # Delete old data for the dates we are about to update
-            dates_to_update = sorted(list(set(row[0] for row in daily_data)))
-            for event_date in dates_to_update:
-                cursor.execute("DELETE FROM daily_usage WHERE date = ?", (event_date,))
-                cursor.execute("DELETE FROM daily_category_usage WHERE date = ?", (event_date,))
-
-            # Insert new daily usage data
+                
+            # Process each daily group
             for row in daily_data:
-                event_date, device_type, app_name, website_url, category, total_seconds, event_count = row
+                event_date, device_type, app_name, category, total_seconds, event_count = row
+                
+                # Insert or update daily usage
                 cursor.execute("""
-                    INSERT INTO daily_usage
-                    (date, device_type, app_name, website_url, category, total_seconds, event_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (event_date, device_type, app_name, website_url, category, total_seconds, event_count))
-
-            # Now, re-calculate daily category usage from the newly inserted daily_usage data
+                    INSERT OR REPLACE INTO daily_usage 
+                    (date, device_type, app_name, category, total_seconds, event_count)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (event_date, device_type, app_name, category, total_seconds, event_count))
+                
+            # Process daily category aggregations
             cursor.execute("""
-                SELECT
+                SELECT 
                     date,
                     device_type,
                     category,
                     SUM(total_seconds) as total_seconds
                 FROM daily_usage
-                WHERE date >= ?
+                WHERE date > ?
                 GROUP BY date, device_type, category
-            """, (start_processing_date,))
+                ORDER BY date
+            """, (last_processed_date,))
             
             category_data = cursor.fetchall()
-
+            
             for row in category_data:
                 event_date, device_type, category, total_seconds = row
+                
                 cursor.execute("""
-                    INSERT INTO daily_category_usage
+                    INSERT OR REPLACE INTO daily_category_usage 
                     (date, device_type, category, total_seconds)
                     VALUES (?, ?, ?, ?)
                 """, (event_date, device_type, category, total_seconds))
-
+                
             conn.commit()
             conn.close()
-
-            self.logger.info(f"Processed {len(daily_data)} daily aggregations and {len(category_data)} category aggregations for {len(dates_to_update)} day(s).")
-
+            
+            self.logger.info(f"Processed {len(daily_data)} daily aggregations and {len(category_data)} category aggregations")
+            
         except Exception as e:
-            self.logger.error(f"Error processing daily aggregations: {e}", exc_info=True)
+            self.logger.error(f"Error processing daily aggregations: {e}")
             
     def _update_app_categories_table(self):
         """Update the app_categories table from the JSON mappings"""

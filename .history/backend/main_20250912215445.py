@@ -249,21 +249,20 @@ async def get_daily_usage(
                     percentage=round(percentage, 2)
                 ))
             apps_query = """
-                SELECT app_name, category, website_url, total_seconds
+                SELECT app_name, category, total_seconds
                 FROM daily_usage
                 WHERE date = ? AND device_type = 'desktop'
                 ORDER BY total_seconds DESC
                 LIMIT 10
             """
             apps_results = db.execute_query(apps_query, (str(target_date),))
-            for app_name, category, website_url, seconds in apps_results:
+            for app_name, category, seconds in apps_results:
                 percentage = (seconds / total_screen_time * 100) if total_screen_time > 0 else 0
                 top_apps.append(UsageData(
                     app_name=app_name,
                     category=category or 'Uncategorized',
                     total_seconds=seconds,
-                    percentage=round(percentage, 2),
-                    website_url=website_url
+                    percentage=round(percentage, 2)
                 ))
         except HTTPException:
             # Fall back if queries failed
