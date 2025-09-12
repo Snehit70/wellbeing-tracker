@@ -1,0 +1,2 @@
+# Digital Wellbeing Collector Requirements
+psutil>=5.9.0

@@ -1,0 +1,45 @@
+{
+  "categories": {
+    "Work": {
+      "apps": ["code", "vscode", "intellij", "pycharm", "sublime", "atom", "vim", "nvim", "emacs", "jetbrains", "webstorm", "phpstorm", "datagrip", "rubymine", "goland", "clion"],
+      "color": "#3B82F6",
+      "description": "Development tools and work-related applications"
+    },
+    "Communication": {
+      "apps": ["slack", "discord", "teams", "zoom", "skype", "telegram", "whatsapp", "signal", "element", "matrix", "thunderbird", "outlook", "gmail"],
+      "color": "#10B981",
+      "description": "Communication and collaboration tools"
+    },
+    "Browsing": {
+      "apps": ["firefox", "chrome", "chromium", "safari", "edge", "brave", "opera", "vivaldi", "tor", "librewolf"],
+      "color": "#F59E0B",
+      "description": "Web browsers and general internet usage"
+    },
+    "Entertainment": {
+      "apps": ["spotify", "vlc", "mpv", "netflix", "youtube", "twitch", "steam", "lutris", "gamemode", "obs", "audacity", "gimp", "blender", "krita"],
+      "color": "#EF4444",
+      "description": "Media consumption and gaming"
+    },
+    "Productivity": {
+      "apps": ["notion", "obsidian", "typora", "libreoffice", "onlyoffice", "calligraproject", "inkscape", "figma", "canva", "trello", "todoist", "anki"],
+      "color": "#8B5CF6",
+      "description": "Note-taking, document editing, and task management"
+    },
+    "System": {
+      "apps": ["terminal", "konsole", "gnome-terminal", "alacritty", "kitty", "wezterm", "thunar", "nautilus", "dolphin", "ranger", "htop", "btop", "system-monitor"],
+      "color": "#6B7280",
+      "description": "System utilities and file management"
+    },
+    "Other": {
+      "apps": [],
+      "color": "#9CA3AF",
+      "description": "Uncategorized applications"
+    }
+  },
+  "rules": {
+    "default_category": "Other",
+    "case_sensitive": false,
+    "match_strategy": "partial"
+  },
+  "updated_at": "2025-09-11T00:00:00Z"
+}
