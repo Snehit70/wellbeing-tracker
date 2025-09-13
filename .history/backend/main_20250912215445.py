@@ -156,7 +156,7 @@ DB_PATH = PROJECT_ROOT / "data/wellbeing.db"
 CATEGORIES_PATH = PROJECT_ROOT / "data/app_categories.json"
 
 # Initialize FastAPI app
-APP_START_TIME = datetime.utcnow()
+APP_START_TIME = datetime.now(timezone.utc)()
 
 app = FastAPI(
     title="Digital Wellbeing Tracker API",
@@ -700,7 +700,7 @@ async def get_summary_stats(
 async def debug_overview(date_param: str = Query(default=None, alias="date"), db: DatabaseManager = Depends(get_db_manager)):
     """Detailed breakdown for the overview page to pinpoint failing segment."""
     if not date_param:
-        date_param = datetime.utcnow().strftime('%Y-%m-%d')
+        date_param = datetime.now(timezone.utc)().strftime('%Y-%m-%d')
     issues: List[str] = []
     tables = {}
     for t in ["events", "hourly_usage", "daily_usage", "daily_category_usage"]:
@@ -758,7 +758,7 @@ async def diagnostics_status(db: DatabaseManager = Depends(get_db_manager), cat_
     db_size = db_path.stat().st_size if db_exists else 0
 
     # Uptime
-    uptime_seconds = (datetime.utcnow() - APP_START_TIME).total_seconds()
+    uptime_seconds = (datetime.now(timezone.utc)() - APP_START_TIME).total_seconds()
 
     # Collector status heuristic
     collector_status = "unknown"
@@ -766,7 +766,7 @@ async def diagnostics_status(db: DatabaseManager = Depends(get_db_manager), cat_
     if last_event_ts:
         try:
             last_event_dt = datetime.fromisoformat(last_event_ts)
-            last_event_age_seconds = (datetime.utcnow() - last_event_dt).total_seconds()
+            last_event_age_seconds = (datetime.now(timezone.utc)() - last_event_dt).total_seconds()
             if last_event_age_seconds < 60:
                 collector_status = "ok"
             elif last_event_age_seconds < 300:
@@ -788,7 +788,7 @@ async def diagnostics_status(db: DatabaseManager = Depends(get_db_manager), cat_
     if last_hourly_created:
         try:
             last_hourly_dt = datetime.fromisoformat(last_hourly_created)
-            last_hourly_age_seconds = (datetime.utcnow() - last_hourly_dt).total_seconds()
+            last_hourly_age_seconds = (datetime.now(timezone.utc)() - last_hourly_dt).total_seconds()
             if last_hourly_age_seconds < 600:  # 10 min
                 processor_status = "ok"
             elif last_hourly_age_seconds < 1800:
@@ -809,7 +809,7 @@ async def diagnostics_status(db: DatabaseManager = Depends(get_db_manager), cat_
     if last_daily_created:
         try:
             last_daily_dt = datetime.fromisoformat(last_daily_created)
-            if last_daily_dt.date() == datetime.utcnow().date():
+            if last_daily_dt.date() == datetime.now(timezone.utc)().date():
                 daily_status = "ok"
             else:
                 daily_status = "stale"
@@ -893,7 +893,7 @@ async def diagnostics_status(db: DatabaseManager = Depends(get_db_manager), cat_
                 warnings.append(w)
 
     return DiagnosticsResponse(
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc)().isoformat(),
         components=component_list,
         warnings=warnings
     )
